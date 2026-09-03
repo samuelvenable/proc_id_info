@@ -1,0 +1,67 @@
+/*
+
+MIT License
+
+Copyright © 2021-2026 Samuel Venable
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+*/
+
+#include <proc_id_info/proc_id_info.hpp>
+#if defined(__proc_id_info_supported__)
+#include <iostream>
+#include <algorithm>
+
+#include <cctype>
+#include <cstdio>
+#include <cstddef>
+#include <cstring>
+
+#if ((defined(_WIN32) || defined(_WIN64)) && defined(_MSC_VER))
+#pragma comment(linker, "/subsystem:console /entry:mainCRTStartup")
+#endif
+#endif
+
+int main() {
+  #if defined(__proc_id_info_supported__)
+  std::vector<proc_id_info::proc_id_t> pid = proc_id_info::proc_id_enum();
+  for (std::size_t i = 0; i < pid.size(); i++) {
+    std::cout << "pid[" << i << "]: " << pid[i] << ", pid: " << pid[i] << "\n";
+    std::string exe = proc_id_info::exe_from_proc_id(pid[i]);
+    if (!exe.empty()) std::cout << "pid[" << i << "]: " << pid[i] << ", exe: " << exe << "\n";
+    std::string cwd = proc_id_info::cwd_from_proc_id(pid[i]);
+    if (!cwd.empty()) std::cout << "pid[" << i << "]: " << pid[i] << ", cwd: " << cwd << "\n";
+    std::string comm = proc_id_info::comm_from_proc_id(pid[i]);
+    if (!comm.empty()) std::cout << "pid[" << i << "]: " << pid[i] << ", comm: " << comm << "\n";
+    std::vector<proc_id_info::proc_id_t> ppid = proc_id_info::parent_proc_id_from_proc_id(pid[i]);
+    if (!ppid.empty()) std::cout << "pid[" << i << "]: " << pid[i] << ", ppid: " << ppid[0] << "\n";
+    std::vector<proc_id_info::proc_id_t> cpid = proc_id_info::proc_id_from_parent_proc_id(pid[i]);
+    for (std::size_t j = 0; j < cpid.size(); j++)
+      std::cout << "pid[" << i << "]: " << pid[i] << ", cpid[" << j << "]: " << cpid[j] << "\n";
+    std::vector<std::string> cmd = proc_id_info::cmdline_from_proc_id(pid[i]);
+    for (std::size_t j = 0; j < cmd.size(); j++)
+      std::cout << "pid[" << i << "]: " << pid[i] << ", cmd[" << j << "]: " << cmd[j] << "\n";
+    std::vector<std::string> env = proc_id_info::environ_from_proc_id(pid[i]);
+    for (std::size_t j = 0; j < env.size(); j++)
+      std::cout << "pid[" << i << "]: " << pid[i] << ", env[" << j << "]: " << env[j] << "\n";
+  }
+  #endif
+  return 0;
+}

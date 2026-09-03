@@ -1,0 +1,66 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+Cross-Platform Process Information Retrieval C++ API by Samuel Venable
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Supports Windows, macOS, GNU/Linux, FreeBSD, DragonFly BSD, NetBSD, OpenBSD, Solaris, illumos, and Android.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`proc_id_info::proc_id_t proc_id_info::proc_id_from_self();` returns the process identifier for the current process, (or current running instance of the application). On Windows, a process identifier is an unsigned long integer. On Unix-likes, this a process identifier is a signed integer. Despite being a signed integer on Unix-likes, it is impossible for a negative number to represent a valid process identifier.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::vector<proc_id_info::proc_id_t> proc_id_info::proc_id_enum();` returns a C++ std::vector of process identifiers for every running process in the current user session. On Unix-likes, a process identifier of one represents the system initialization process, which is responsible for starting up and shutting down your machine. This function only includes thread group identifiers in the vector, which are the process identifiers of a process's main thread. Kernel thread identifiers are omitted. On failure, std::vector::empty() will be true.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`bool proc_id_info::proc_id_exists(proc_id_info::proc_id_t proc_id);` returns true if the process identifier in proc_id represents a process which is running in the current user session. This function will iterate over all processes running in the current user session until one is found which is represented by the process identifier passed to the proc_id argument, and if one is found, true is returned; otherwise, false is returned because the specified process identifier did not match an existing process in the current user session. This function only checks for equality of existing thread group identifiers, which are the process identifiers of a process's main thread. Kernel thread identifiers are omitted from the check. On failure, the return value will be false.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+`bool proc_id_info::proc_id_suspend(proc_id_info::proc_id_t proc_id);` suspends the process represented by the process identifier in the proc_id argument. Returns true on success; returns false on failure. Useful for preventing race conditions when reading foreign process information. Also good for debugging applications.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`bool proc_id_info::proc_id_resume(proc_id_info::proc_id_t proc_id);` resumes a previously suspended process represented by the process identifier in the proc_id argument. Returns true on success; returns false on failure. Useful for preventing race conditions when reading foreign process information. Also good for debugging applications.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`bool proc_id_info::proc_id_kill(proc_id_info::proc_id_t proc_id);` kills the process represented by the process identifier in the proc_id argument. When a process is killed, it is forced to be closed by the calling process. It can be dangerous to accidentally kill the wrong process, and it is easy to do so, especially in the case of a race condition. Returns true on success; returns false on failure.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::vector<proc_id_info::proc_id_t> proc_id_info::parent_proc_id_from_proc_id(proc_id_info::proc_id_t proc_id);` on success, the function returns a C++ std::vector holding a single process identifier which represents the parent process of the process identifier provided in the proc_id argument. std::vector::empty() returns true if the function fails.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::vector<proc_id_info::proc_id_t> proc_id_info::proc_id_from_parent_proc_id(proc_id_info::proc_id_t parent_proc_id);` on success, the function returns a C++ std::vector holding all process identifiers which represent the children of the given parent process identifier in the parent_proc_id argument. std::vector::empty() returns true if there are no children, or if the function has failed.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::string proc_id_info::exe_from_proc_id(proc_id_info::proc_id_t proc_id);` returns the executable pathname associated with the given process identifier in the proc_id argument. std::string::empty() is true if the function has failed. The return value will be an absolute pathname with all symbollic links resolved. The pathname will be normalized, meaning there will be no double slashes, no dot, and no dot-dot in the returned pathname. The returned pathname is limited to MAX_PATH characters on Windows, and on Unix-likes, the returned pathname is limited to PATH_MAX characters. PATH_MAX is implementation-defined by the platform.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::string proc_id_info::cwd_from_proc_id(proc_id_info::proc_id_t proc_id);` returns the current working directory associated with the given process identifier in the proc_id argument. std::string::empty() is true if the function has failed. The return value will be an absolute pathname with all symbollic links resolved. The pathname will be normalized, meaning there will be no double slashes, no dot, and no dot-dot in the returned pathname. The returned pathname is limited to MAX_PATH characters on Windows, and on Unix-likes, the returned pathname is limited to PATH_MAX characters. PATH_MAX is implementation-defined by the platform. The pathname returned will not contain a trailing slash on all platforms. On Windows, the underlying API has a trailing slash, which this function removes. On Windows, the executable which spawned the target process identifier must be 32-bit, if the calling process was spawned from a 32-bit executable, otherwise, the function will fail.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::string proc_id_info::comm_from_proc_id(proc_id_info::proc_id_t proc_id);` returns the executable filename, (or command name), associated with the given process identifier in the proc_id argument, not including the executable filename's path component. std::string::empty() is true if the function has failed. Some platforms have an official API to get this information, (most Unix-likes do), however it is truncated to MAXCOMLEN or something similar, which is often a very short amount of characters, not fit for longer filenames. Instead of using the official API for this purpose, this function retrieves the absolute pathname of the executable using an internal call to exe_from_proc_id(), and then removes the path component from the resulting filename, (thus giving the command name).
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::vector<std::string> proc_id_info::cmdline_from_proc_id(proc_id_info::proc_id_t proc_id);` returns a C++ std::vector of the full list of command line arguments associated with the given process represented by the process identifier in the proc_id argument. On most platforms this value can be modified by the process associated with it, as well as its initial value by the parent process which spawned it. The exception to this would be on macOS, the C++ std::vector returned will be the initial command line argument values, and will not return any modifications that were made to the command line arguments by the process represented by the process intentifier passed to the proc_id argument of this function. std::vector::empty() returns true if the function failed. On Windows, the executable which spawned the target process identifier must be 32-bit, if the calling process was spawned from a 32-bit executable, otherwise, the function will fail.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::vector<std::string> proc_id_info::environ_from_proc_id(proc_id_info::proc_id_t proc_id);` returns a C++ std::vector of the full list of environment variables associated with the given process represented by the process identifier in the proc_id argument. On most platforms this value can be modified by the process associated with it, as well as its initial value by the parent process which spawned it. The exception to this would be on macOS, the C++ std::vector returned will be the initial environment variables passed to the executable, and will not return any modifications that were made to the environment variables by the process represented by the process intentifier passed to the proc_id argument of this function. std::vector::empty() returns true if the function failed. On Windows, the executable which spawned the target process identifier must be 32-bit, if the calling process was spawned from a 32-bit executable, otherwise, the function will fail.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`std::string proc_id_info::envvar_value_from_proc_id(proc_id_info::proc_id_t proc_id, std::string name);` returns the string value of an environment variable of the given name in the name argument belonging to the process whose process identifier is represented by the proc_id argument. std::string::empty() returns true if the variable does not exist or if the value it has is empty. To find out if a environment variable exists within the scope of a foreign process environment block, call envvar_exists_from_proc_id() instead, as there are times where a variable does exist within the environment block but has no value associated with it. On Windows, the executable which spawned the target process identifier must be 32-bit, if the calling process was spawned from a 32-bit executable, otherwise, the function will fail. On failure, std::string::empty() will be true.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+`bool proc_id_info::envvar_exists_from_proc_id(proc_id_info::proc_id_t proc_id, std::string name);` returns whether an environment variable of the given name in the name argument belongs to the process whose process identifier is represented by the proc_id argument. Returns true if the variable was found, and returns false otherwise. On Windows, the executable which spawned the target process identifier must be 32-bit, if the calling process was spawned from a 32-bit executable, otherwise, the function will fail. On failure, the return value will be false.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
