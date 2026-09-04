@@ -45,12 +45,13 @@ SOFTWARE.
 #endif
 
 #if (defined(_WIN32) || defined(_WIN64))
+#include <psapi.h>
+#include <fileapi.h>
 #include <shlwapi.h>
 #include <objbase.h>
 #include <tlhelp32.h>
 #include <winternl.h>
-#include <fileapi.h>
-#include <psapi.h>
+#include <processthreadsapi.h>
 #elif (defined(__APPLE__) && defined(__MACH__))
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
@@ -267,6 +268,21 @@ namespace {
       proc = OpenProcess(PROCESS_ALL_ACCESS, false, proc_id);
     }
     return proc;
+  }
+
+  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
+	HANDLE proc_handle = nullptr, parent_proc_handle = nullptr;
+	if ((proc_handle = open_process_with_debug_privilege(proc_id))) {
+	  if ((parent_proc_handle = open_process_with_debug_privilege(parent_proc_id))) {
+        FILETIME proc_creation_time, proc_exit_time, proc_kernel_time, proc_user_time;
+        FILETIME parent_proc_creation_time, parent_proc_exit_time, parent_proc_kernel_time, parent_proc_user_time;
+        if (GetProcessTimes(proc_handle, &proc_creation_time, &proc_exit_time, &proc_kernel_time, &proc_user_time) &&
+          GetProcessTimes(parent_proc_handle, &parent_proc_creation_time, &parent_proc_exit_time, &parent_proc_kernel_time, &parent_proc_user_time)) {
+          return (CompareFileTime(&proc_creation_time, &parent_proc_creation_time) == 1);
+        }
+      }
+	}
+    return false;
   }
 
   std::vector<wchar_t> cmd_env_cwd_from_proc(HANDLE proc, int type) {
@@ -746,11 +762,15 @@ namespace proc_id_info {
       do {
         message_pump();
         if (pe.th32ProcessID == proc_id) {
-          // If the szExeFile member of the PROCESSENTRY32 structure has 
+          // If the szExeFile member of the PROCESSENTRY32 structure has
 		  // no *.exe file extension, that means it is a kernel thread...
 	      std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
-            vec.push_back(pe.th32ParentProcessID);
+            // Returns true if the parent was created first, to avoid race conditions...
+            // Returns false if the child was created first, or false if an error occurred during detection...
+			if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
+              vec.push_back(pe.th32ParentProcessID);
+			}
           }
           break;
         }
@@ -913,11 +933,15 @@ namespace proc_id_info {
       do {
         message_pump();
         if (pe.th32ParentProcessID == parent_proc_id) {
-          // If the szExeFile member of the PROCESSENTRY32 structure has 
+          // If the szExeFile member of the PROCESSENTRY32 structure has
 		  // no *.exe file extension, that means it is a kernel thread...
 	      std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
-            vec.push_back(pe.th32ProcessID);
+            // Returns true if the parent was created first, to avoid race conditions...
+            // Returns false if the child was created first, or false if an error occurred during detection...
+            if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
+              vec.push_back(pe.th32ProcessID);
+			}
           }
         }
       } while (Process32Next(hp, &pe));
