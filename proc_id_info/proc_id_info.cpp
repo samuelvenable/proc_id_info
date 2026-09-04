@@ -271,9 +271,9 @@ namespace {
   }
 
   bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-	HANDLE proc_handle = nullptr, parent_proc_handle = nullptr;
-	if ((proc_handle = open_process_with_debug_privilege(proc_id))) {
-	  if ((parent_proc_handle = open_process_with_debug_privilege(parent_proc_id))) {
+    HANDLE proc_handle = nullptr, parent_proc_handle = nullptr;
+    if ((proc_handle = open_process_with_debug_privilege(proc_id))) {
+      if ((parent_proc_handle = open_process_with_debug_privilege(parent_proc_id))) {
         FILETIME proc_creation_time, proc_exit_time, proc_kernel_time, proc_user_time;
         FILETIME parent_proc_creation_time, parent_proc_exit_time, parent_proc_kernel_time, parent_proc_user_time;
         if (GetProcessTimes(proc_handle, &proc_creation_time, &proc_exit_time, &proc_kernel_time, &proc_user_time) &&
@@ -281,7 +281,7 @@ namespace {
           return (CompareFileTime(&proc_creation_time, &parent_proc_creation_time) == 1);
         }
       }
-	}
+    }
     return false;
   }
 
@@ -462,20 +462,20 @@ namespace {
 
   bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
     auto proc_pstatus_get = [](pstatus_t *pstatus, proc_id_info::proc_id_t proc_id) {
-	  int fd = -1, retval = -1;
+      int fd = -1, retval = -1;
       std::string procfs_path;
       if (proc_id == proc_id_info::proc_id_from_self()) {
         procfs_path = "/proc/self/status";
       } else {
         procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/status");
       }
-	  if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
+      if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
         if (read(fd, pstatus, sizeof(*pstatus)) == sizeof(*pstatus)) {
-	      retval = 0;
+          retval = 0;
         }
-	    close(fd);
-	  }
-	  return retval;
+        close(fd);
+      }
+      return retval;
     };
     pstatus_t pstatus;
     if (!proc_pstatus_get(&pstatus, proc_id)) {
@@ -540,8 +540,8 @@ namespace proc_id_info {
       do {
         message_pump();
         // If the szExeFile member of the PROCESSENTRY32 structure has 
-		// no *.exe file extension, that means it is a kernel thread...
-	    std::string comm = pe.szExeFile; std::size_t len = comm.length();
+        // no *.exe file extension, that means it is a kernel thread...
+        std::string comm = pe.szExeFile; std::size_t len = comm.length();
         if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
           vec.push_back(pe.th32ProcessID);
         }
@@ -763,14 +763,14 @@ namespace proc_id_info {
         message_pump();
         if (pe.th32ProcessID == proc_id) {
           // If the szExeFile member of the PROCESSENTRY32 structure has
-		  // no *.exe file extension, that means it is a kernel thread...
-	      std::string comm = pe.szExeFile; std::size_t len = comm.length();
+          // no *.exe file extension, that means it is a kernel thread...
+          std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
             // Returns true if the parent was created first, to avoid race conditions...
             // Returns false if the child was created first, or false if an error occurred during detection...
-			if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
               vec.push_back(pe.th32ParentProcessID);
-			}
+            }
           }
           break;
         }
@@ -934,14 +934,14 @@ namespace proc_id_info {
         message_pump();
         if (pe.th32ParentProcessID == parent_proc_id) {
           // If the szExeFile member of the PROCESSENTRY32 structure has
-		  // no *.exe file extension, that means it is a kernel thread...
-	      std::string comm = pe.szExeFile; std::size_t len = comm.length();
+          // no *.exe file extension, that means it is a kernel thread...
+          std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
             // Returns true if the parent was created first, to avoid race conditions...
             // Returns false if the child was created first, or false if an error occurred during detection...
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
               vec.push_back(pe.th32ProcessID);
-			}
+            }
           }
         }
       } while (Process32Next(hp, &pe));
