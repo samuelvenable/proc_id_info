@@ -645,8 +645,8 @@ namespace {
       if (last_closing_parentheses == std::string::npos || last_closing_parentheses + 2 >= content.length()) {
         return retval; 
       }
-      std::string remaining = content.substr(last_closing_parentheses + 2);
-      std::istringstream iss(remaining);
+      std::string rest_of_file = content.substr(last_closing_parentheses + 2);
+      std::istringstream iss(rest_of_file);
       std::string token;
       std::vector<std::string> fields;
       while (iss >> token) {
