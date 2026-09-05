@@ -1920,21 +1920,6 @@ namespace proc_id_info {
         path = cwd;
       }
     }
-    kvm_t *kd = nullptr;
-    struct proc *proc_info = nullptr;
-    struct user *proc_user = nullptr;
-    if (!path.empty()) { 
-      goto finish;
-    }
-    kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
-    if (!kd) return path;
-    if ((proc_info = kvm_getproc(kd, proc_id))) {
-      if ((proc_user = kvm_getu(kd, proc_info))) {
-        path = proc_user->u_cwd->rs_string;
-      }
-    }
-    kvm_close(kd);
-    finish:
     #endif
     return path;
   }
