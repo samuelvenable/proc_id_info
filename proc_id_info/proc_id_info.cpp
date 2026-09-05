@@ -681,7 +681,7 @@ namespace {
     return (child_sec >= parent_sec && child_msec > parent_msec);
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     time_t child_sec = 0, parent_sec = 0;
-    long child_nsec = 0, parent_nsec = 0;
+    long child_usec = 0, parent_usec = 0;
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
@@ -691,20 +691,20 @@ namespace {
     if (!kd) return false;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
       child_sec = proc_info->ki_start.tv_sec;
-      child_nsec = proc_info->ki_start.tv_nsec;
+      child_usec = proc_info->ki_startztv_usec;
     }
     kvm_close(kd);
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return false;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, parent_proc_id, &cntp))) {
       parent_sec = proc_info->ki_start.tv_sec;
-      parent_nsec = proc_info->ki_start.tv_nsec;
+      parent_usec = proc_info->ki_start.tv_usec;
     }
     kvm_close(kd);
-    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    return (child_sec >= parent_sec && child_usec > parent_usec);
     #elif defined(__DragonFly__)
     time_t child_sec = 0, parent_sec = 0;
-    long child_nsec = 0, parent_nsec = 0;
+    long child_usec = 0, parent_usec = 0;
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
@@ -714,17 +714,17 @@ namespace {
     if (!kd) return false;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
       child_sec = proc_info->kp_start.tv_sec;
-      child_nsec = proc_info->kp_start.tv_nsec;
+      child_usec = proc_info->kp_start.tv_usec;
     }
     kvm_close(kd);
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return false;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, parent_proc_id, &cntp))) {
       parent_sec = proc_info->kp_start.tv_sec;
-      parent_nsec = proc_info->kp_start.tv_nsec;
+      parent_usec = proc_info->kp_start.tv_usec;
     }
     kvm_close(kd);
-    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    return (child_sec >= parent_sec && child_usec > parent_usec);
     #elif defined(__NetBSD__)
     std::uint32_t child_sec = 0, parent_sec = 0;
     std::uint32_t child_usec = 0, parent_usec = 0;
