@@ -1221,13 +1221,13 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    finish:
     struct is_invalid {
       bool operator()(proc_id_t proc_id) {
         return (proc_id_is_kernel_thread(proc_id));
       }
     };
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
-    finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
     if (!vec.empty() && vec[0] == 4) {
@@ -1300,12 +1300,14 @@ namespace proc_id_info {
       }
     }
     closedir(proc);
+    #if (defined(__linux__) || defined(__ANDROID__))
     struct is_invalid {
       bool operator()(proc_id_t proc_id) {
         return (proc_id_is_kernel_thread(proc_id));
       }
     };
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
+    #endif
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1428,8 +1430,13 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     finish:
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
     auto itr = std::remove(vec.begin(), vec.end(), 4);
