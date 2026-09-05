@@ -46,13 +46,13 @@ SOFTWARE.
 #endif
 
 #if (defined(_WIN32) || defined(_WIN64))
-#include <psapi.h>
-#include <fileapi.h>
 #include <shlwapi.h>
 #include <objbase.h>
 #include <tlhelp32.h>
 #include <winternl.h>
 #include <processthreadsapi.h>
+#include <fileapi.h>
+#include <psapi.h>
 #elif (defined(__APPLE__) && defined(__MACH__))
 #include <sys/proc_info.h>
 #include <mach-o/dyld.h>
@@ -458,7 +458,7 @@ namespace {
     #if (defined(_WIN32) || defined(_WIN64))
     bool retval = false;
     HANDLE hp = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (!hp) return vec;
+    if (!hp) return false;
     PROCESSENTRY32 pe;
     pe.dwSize = sizeof(PROCESSENTRY32);
     if (Process32First(hp, &pe)) {
@@ -953,9 +953,12 @@ namespace proc_id_info {
     #if (defined(_WIN32) || defined(_WIN64))
     auto itr = std::remove(vec.begin(), vec.end(), 4);
     vec.erase(itr, vec.end());
-    #endif
+    itr = std::remove(vec.begin(), vec.end(), 0);
+    vec.erase(itr, vec.end());
+    #else
     auto itr = std::remove(vec.begin(), vec.end(), 0);
     vec.erase(itr, vec.end());
+    #endif
     std::sort(vec.begin(), vec.end());
     return vec;
   }
@@ -1433,9 +1436,12 @@ namespace proc_id_info {
     #if (defined(_WIN32) || defined(_WIN64))
     auto itr = std::remove(vec.begin(), vec.end(), 4);
     vec.erase(itr, vec.end());
-    #endif
+    itr = std::remove(vec.begin(), vec.end(), 0);
+    vec.erase(itr, vec.end());
+    #else
     auto itr = std::remove(vec.begin(), vec.end(), 0);
     vec.erase(itr, vec.end());
+    #endif
     std::sort(vec.begin(), vec.end());
     return vec;
   }
