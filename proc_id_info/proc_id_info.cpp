@@ -1453,6 +1453,9 @@ namespace proc_id_info {
 
   std::string exe_from_proc_id(proc_id_t proc_id) {
     std::string path;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return path;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return path;
     #endif
@@ -1721,6 +1724,9 @@ namespace proc_id_info {
 
   std::string cwd_from_proc_id(proc_id_t proc_id) {
     std::string path;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return path;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return path;
     #endif
@@ -2063,6 +2069,9 @@ namespace proc_id_info {
 
   std::vector<std::string> cmdline_from_proc_id(proc_id_t proc_id) {
     std::vector<std::string> vec;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return vec;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return vec;
     #endif
@@ -2182,6 +2191,9 @@ namespace proc_id_info {
 
   std::vector<std::string> environ_from_proc_id(proc_id_t proc_id) {
     std::vector<std::string> vec;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return vec;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return vec;
     #endif
@@ -2302,6 +2314,9 @@ namespace proc_id_info {
 
   std::string envvar_value_from_proc_id(proc_id_t proc_id, std::string name) {
     std::string value;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return value;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return value;
     #endif
@@ -2327,6 +2342,9 @@ namespace proc_id_info {
 
   bool envvar_exists_from_proc_id(proc_id_t proc_id, std::string name) {
     bool exists = false;
+    if (proc_id_is_kernel_thread(proc_id)) {
+      return exists;
+    }
     #if (!defined(_WIN32) && !defined(_WIN64))
     if (proc_id < 0) return exists;
     #endif
