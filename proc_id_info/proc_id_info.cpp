@@ -26,6 +26,12 @@ SOFTWARE.
 
 #include <proc_id_info/proc_id_info.hpp>
 #if defined(__proc_id_info_supported__)
+#if (defined(__sun) && defined(__SVR4))
+#if !defined(_KMEMUSER)
+#define _KMEMUSER
+#endif
+#endif
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -35,6 +41,7 @@ SOFTWARE.
 #include <cstring>
 #include <climits>
 #include <cstdio>
+#include <cerrno>
 #include <ctime>
 
 #if (!defined(_WIN32) && !defined(_WIN64))
@@ -77,7 +84,6 @@ SOFTWARE.
 #include <sys/sysctl.h>
 #include <kvm.h>
 #elif (defined(__sun) && defined(__SVR4))
-#include <cerrno>
 #include <kvm.h>
 #include <dirent.h>
 #include <libproc.h>
