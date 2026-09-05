@@ -887,8 +887,6 @@ namespace proc_id_info {
           // no *.exe file extension, that means it is a kernel thread...
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
-            // Returns true if the parent was created first, to avoid race conditions...
-            // Returns false if the child was created first, or false if an error occurred during detection...
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
               vec.push_back(pe.th32ParentProcessID);
             }
@@ -909,7 +907,9 @@ namespace proc_id_info {
     // The proc_pidinfo(...) API does not include kernel threads...
     // Use the sysctl(...) API instead if you need to include kernel threads...
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
-      vec.push_back(proc_info.pbi_ppid);
+      if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info.pbi_ppid)) {
+        vec.push_back(proc_info.pbi_ppid);
+      }
     }
     #elif (defined(__linux__) || defined(__ANDROID__))
     // Checks if the PF_KTHREAD flag is not present on Linux / Android...
@@ -932,7 +932,9 @@ namespace proc_id_info {
             ((token = strtok(nullptr, " "))) &&
             ((token = strtok(nullptr, " ")))) {
             proc_id_t parent_proc_id = strtoul(token, nullptr, 10);
-            vec.push_back(parent_proc_id);
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, parent_proc_id)) {
+              vec.push_back(parent_proc_id);
+            }
           }
         }
         fclose(file);
@@ -957,7 +959,9 @@ namespace proc_id_info {
       // For consistency with the other Unix-like platforms we do not omit a PID of one...
       // The Unix-like system init process, (a PID of one), is not a kernel thread...
       if (!(proc_info->ki_flag & P_SYSTEM) || proc_info->ki_ppid == 1) {
-        vec.push_back(proc_info->ki_ppid);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->ki_ppid)) {
+          vec.push_back(proc_info->ki_ppid);
+        }
       }
     }
     kvm_close(kd);
@@ -980,7 +984,9 @@ namespace proc_id_info {
       // For consistency with the other Unix-like platforms we do not omit a PID of one...
       // The Unix-like system init process, (a PID of one), is not a kernel thread...
       if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_ppid == 1) {
-        vec.push_back(proc_info->kp_ppid);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->kp_ppid)) {
+          vec.push_back(proc_info->kp_ppid);
+        }
       }
     }
     kvm_close(kd);
@@ -998,7 +1004,9 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getproc2(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc2), &cntp))) {
       if (!(proc_info->p_flag & P_SYSTEM)) {
-        vec.push_back(proc_info->p_ppid);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
+          vec.push_back(proc_info->p_ppid);
+        }
       }
     }
     kvm_close(kd);
@@ -1016,7 +1024,9 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
       if (!(proc_info->p_flag & P_SYSTEM)) {
-        vec.push_back(proc_info->p_ppid);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
+          vec.push_back(proc_info->p_ppid);
+        }
       }
     }
     kvm_close(kd);
@@ -1056,7 +1066,9 @@ namespace proc_id_info {
       // The Solaris / illumos SSYS flag is basically the same thing as the P_SYSTEM flag on *BSD platforms...
       // If the SSYS flag is not set on the currently iterated process, that means it is not a kernel thread...
       if (!(proc_info->p_flag & SSYS)) {
-        vec.push_back(proc_info->p_ppid);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
+          vec.push_back(proc_info->p_ppid);
+        }
       }
     }
     kvm_close(kd);
@@ -1123,7 +1135,9 @@ namespace proc_id_info {
     int cntp = proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
-        vec.push_back(proc_info[i]);
+        if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i], parent_proc_id)) {
+          vec.push_back(proc_info[i]);
+        }
       }
     }
     #elif ((defined(__linux__) || defined(__ANDROID__)) || (defined(__sun) && defined(__SVR4)))
@@ -1138,9 +1152,11 @@ namespace proc_id_info {
         // Checks if the PR_ISSYS flag is not present on Solaris / illumos...
         // If these flags are not set then the process is not a kernel thread...
         if (!proc_id_is_kernel_thread(tgid)) {
-          std::vector<proc_id_t> ppid = parent_proc_id_from_proc_id(tgid);
-          if (!ppid.empty() && ppid[0] == parent_proc_id) {
-            vec.push_back(tgid);
+          std::vector<proc_id_t> proc_info = parent_proc_id_from_proc_id(tgid);
+          if (!proc_info.empty() && proc_info[0] == parent_proc_id) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(tgid, proc_info[0])) {
+              vec.push_back(tgid);
+            }
           }
         }
       }
@@ -1169,7 +1185,9 @@ namespace proc_id_info {
         // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].ki_flag & P_SYSTEM) || proc_info[i].ki_ppid == 1) {
           if (proc_info[i].ki_ppid == parent_proc_id) {
-            vec.push_back(proc_info[i].ki_pid);
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].ki_pid, proc_info[i].ki_ppid)) {
+              vec.push_back(proc_info[i].ki_pid);
+            }
           }
         }
       }
@@ -1196,7 +1214,9 @@ namespace proc_id_info {
         // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].kp_flags & P_SYSTEM) || proc_info[i].kp_ppid == 1) {
           if (proc_info[i].kp_ppid == parent_proc_id) {
-            vec.push_back(proc_info[i].kp_pid);
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].kp_pid, proc_info[i].kp_ppid)) {
+              vec.push_back(proc_info[i].kp_pid);
+            }
           }
         }
       }
@@ -1218,7 +1238,9 @@ namespace proc_id_info {
       for (int i = cntp - 1; i >= 0; i--) {
         if (!(proc_info[i].p_flag & P_SYSTEM)) {
           if (proc_info[i].p_ppid == parent_proc_id) {
-            vec.push_back(proc_info[i].p_pid);
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
+              vec.push_back(proc_info[i].p_pid);
+            }
           }
         }
       }
@@ -1242,7 +1264,9 @@ namespace proc_id_info {
       for (int i = cntp - 1; i >= 0; i--) {
         if (!(proc_info[i].p_flag & P_SYSTEM)) {
           if (proc_info[i].p_ppid == parent_proc_id) {
-            vec.push_back(proc_info[i].p_pid);
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
+              vec.push_back(proc_info[i].p_pid);
+            }
           }
         }
       }
@@ -1270,7 +1294,9 @@ namespace proc_id_info {
       if (!(proc_info->p_flag & SSYS)) {
         if (proc_info->p_ppid == parent_proc_id) {
           if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
-            vec.insert(vec.begin(), cur_pid.pid_id);
+            if (proc_id_and_parent_proc_id_compare_creation_time(cur_pid.pid_id, proc_info->p_ppid)) {
+              vec.insert(vec.begin(), cur_pid.pid_id);
+            }
           }
         }
       }
