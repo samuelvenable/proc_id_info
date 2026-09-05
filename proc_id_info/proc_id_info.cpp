@@ -54,6 +54,7 @@ SOFTWARE.
 #include <winternl.h>
 #include <processthreadsapi.h>
 #elif (defined(__APPLE__) && defined(__MACH__))
+#include <sys/proc_info.h>
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
 #include <libproc.h>
@@ -459,9 +460,17 @@ namespace {
       }
     }
     #elif (defined(__APPLE__) && defined(__MACH__))
-    time_t child_sec = 0, parent_sec = 0;
-    long child_nsec = 0, parent_nsec = 0;
-    return true; // TODO: Add proper platform-specific implementation...
+    std::uint64_t child_sec = 0, parent_sec = 0;
+    std::uint64_t child_nsec = 0, parent_nsec = 0;
+    proc_bsdinfo proc_info;
+    if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
+      child_sec = proc_info.pbi_start_tvsec;
+      child_usec = proc_info.pbi_start_tvusec;
+    }
+    if (proc_pidinfo(parent_proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
+      parent_sec = proc_info.pbi_start_tvsec;
+      parent_usec = proc_info.pbi_start_tvusec;
+    }
     return (child_sec >= parent_sec && child_nsec > parent_nsec);
     #elif (defined(__linux__) || defined(__ANDROID__))
     time_t child_sec = 0, parent_sec = 0;
