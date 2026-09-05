@@ -1900,7 +1900,9 @@ namespace proc_id_info {
     }
     std::ifstream file(procfs_path);
     if (file.is_open()) {
-      std::getline(file, comm);
+      if (!proc_id_is_kernel_thread(proc_id)) {
+        std::getline(file, comm);
+      }
     }
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
@@ -1911,7 +1913,7 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return comm;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      if (!(proc_info->ki_flag & P_SYSTEM) || proc_info->ki_ppid == 1) {
+      if (!(proc_info->ki_flag & P_SYSTEM) || proc_info->ki_pid == 1) {
         comm = proc_info->ki_comm;
       }
     }
@@ -1925,7 +1927,7 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return comm;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_ppid == 1) {
+      if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_pid == 1) {
         comm = proc_info->kp_comm;
       }
     }
@@ -1966,7 +1968,9 @@ namespace proc_id_info {
       }
       if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
         if (read(fd, &psinfo, sizeof(psinfo_t)) > 0) {
-          comm = psinfo.pr_fname;
+          if (!proc_id_is_kernel_thread(psinfo.pr_pid)) {
+            comm = psinfo.pr_fname;
+          }
         }
         close(fd);
       }
@@ -1980,9 +1984,11 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return comm;
     if ((proc_info = kvm_getproc(kd, proc_id))) {
-      if (!(proc_info->p_flag & SSYS)) {
-        if ((proc_user = kvm_getu(kd, proc_info))) {
-          comm = proc_user->u_comm;
+      if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
+        if (!(proc_info->p_flag & SSYS) && cur_pid.pid_id != 0) {
+          if ((proc_user = kvm_getu(kd, proc_info))) {
+            comm = proc_user->u_comm;
+          }
         }
       }
     }
