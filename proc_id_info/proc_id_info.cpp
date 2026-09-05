@@ -761,7 +761,7 @@ namespace {
     kvm_close(kd);
     kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
     if (!kd) return false;
-    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, parent_proc_id, sizeof(struct kinfo_proc), &cntp))) {
       parent_sec = proc_info->p_rtime_sec;
       parent_usec = proc_info->p_rtime_usec;
     }
