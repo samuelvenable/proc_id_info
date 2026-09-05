@@ -2245,12 +2245,6 @@ namespace proc_id_info {
 
   std::string envvar_value_from_proc_id(proc_id_t proc_id, std::string name) {
     std::string value;
-    if (proc_id_is_kernel_thread(proc_id)) {
-      return value;
-    }
-    #if (!defined(_WIN32) && !defined(_WIN64))
-    if (proc_id < 0) return value;
-    #endif
     std::vector<std::string> vec = environ_from_proc_id(proc_id);
     if (!vec.empty()) {
       for (std::size_t i = 0; i < vec.size(); i++) {
@@ -2273,12 +2267,6 @@ namespace proc_id_info {
 
   bool envvar_exists_from_proc_id(proc_id_t proc_id, std::string name) {
     bool exists = false;
-    if (proc_id_is_kernel_thread(proc_id)) {
-      return exists;
-    }
-    #if (!defined(_WIN32) && !defined(_WIN64))
-    if (proc_id < 0) return exists;
-    #endif
     std::vector<std::string> vec = environ_from_proc_id(proc_id);
     if (!vec.empty()) {
       for (std::size_t i = 0; i < vec.size(); i++) {
