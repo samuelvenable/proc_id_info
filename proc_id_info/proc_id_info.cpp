@@ -88,7 +88,6 @@ SOFTWARE.
 #include <sys/user.h>
 #include <sys/param.h>
 #include <sys/procfs.h>
-#include <sys/refstr_impl.h>
 #endif
 #include <sys/stat.h>
 #if ((defined(_WIN32) || defined(_WIN64)) && defined(_MSC_VER))
