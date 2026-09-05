@@ -46,6 +46,7 @@ SOFTWARE.
 #endif
 
 #if (defined(_WIN32) || defined(_WIN64))
+#include <windef.h>
 #include <shlwapi.h>
 #include <objbase.h>
 #include <tlhelp32.h>
