@@ -656,7 +656,7 @@ namespace {
         fields.push_back(token);
       }
       if (fields.size() >= 20) {
-        retval = std::strtoll(fields[19], nullptr, 10);
+        retval = std::strtoll(fields[19].c_str(), nullptr, 10);
       }
       return retval;
     };
@@ -668,16 +668,16 @@ namespace {
     }
     long long child_total_msec_from_boot = (child_clock_ticks * 1000) / clock_ticks_per_sec;
     long long child_epoch_msec = (btime_secs * 1000) + child_total_msec_from_boot;
-    time_t child_sec = child_epoch_msec / 1000;
-    long long child_msec = child_epoch_msec % 1000;
+    child_sec = child_epoch_msec / 1000;
+    child_msec = child_epoch_msec % 1000;
     long long parent_clock_ticks = proc_id_get_clock_ticks(parent_proc_id);
     if (btime_secs == 0 || parent_clock_ticks == 0 || clock_ticks_per_sec <= 0) {
       return false;
     }
     long long parent_total_msec_from_boot = (parent_clock_ticks * 1000) / clock_ticks_per_sec;
     long long parent_epoch_msec = (btime_secs * 1000) + parent_total_msec_from_boot;
-    time_t parent_sec = parent_epoch_msec / 1000;
-    long long parent_msec = parent_epoch_msec % 1000;
+    parent_sec = parent_epoch_msec / 1000;
+    parent_msec = parent_epoch_msec % 1000;
     return (child_sec >= parent_sec && child_msec > parent_msec);
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     time_t child_sec = 0, parent_sec = 0;
