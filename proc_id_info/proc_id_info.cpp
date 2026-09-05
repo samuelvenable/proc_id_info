@@ -610,8 +610,8 @@ namespace {
     return false;
   }
 
-  #if (defined(_WIN32) || defined(_WIN64))
   bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #if (defined(_WIN32) || defined(_WIN64))
     bool retval = false;
     HANDLE hp = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (!hp) return vec;
@@ -629,9 +629,7 @@ namespace {
     }
     CloseHandle(hp);
     return retval;
-  }
-  #elif (defined(__linux__) || defined(__ANDROID__))
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif (defined(__linux__) || defined(__ANDROID__))
     std::string procfs_path;
     if (proc_id == proc_id_info::proc_id_from_self()) {
       procfs_path = "/proc/self/stat";
@@ -661,9 +659,7 @@ namespace {
       current_field_index++;
     }
     return (flags & PF_KTHREAD);
-  }
-  #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
@@ -676,10 +672,7 @@ namespace {
       kvm_close(kd);
       return retval;
     }
-    return false;
-  }
-  #elif defined(__DragonFly__)
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
@@ -692,10 +685,7 @@ namespace {
       kvm_close(kd);
       return retval;
     }
-    return false;
-  }
-  #elif defined(__NetBSD__)
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc2 *proc_info = nullptr;
@@ -706,10 +696,7 @@ namespace {
       kvm_close(kd);
       return retval;
     }
-    return false;
-  }
-  #elif defined(__OpenBSD__)
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
@@ -720,10 +707,7 @@ namespace {
       kvm_close(kd);
       return retval;
     }
-    return false;
-  }
-  #elif (defined(__sun) && defined(__SVR4))
-  bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
+    #elif (defined(__sun) && defined(__SVR4))
     auto proc_pstatus_get = [](pstatus_t *pstatus, proc_id_info::proc_id_t proc_id) {
       int fd = -1, retval = -1;
       std::string procfs_path;
@@ -753,9 +737,9 @@ namespace {
       kvm_close(kd);
       return retval;
     }
+    #endif
     return false;
   }
-  #endif
 
 } // anonymous namespace
 
