@@ -253,19 +253,19 @@ namespace {
 
   HANDLE open_process_with_debug_privilege(proc_id_info::proc_id_t proc_id) {
     HANDLE proc = nullptr;
-    HANDLE hToken = nullptr;
+    HANDLE token = nullptr;
     LUID luid;
     TOKEN_PRIVILEGES tkp;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) {
       if (LookupPrivilegeValue(nullptr, SE_DEBUG_NAME, &luid)) {
         tkp.PrivilegeCount = 1;
         tkp.Privileges[0].Luid = luid;
         tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        if (AdjustTokenPrivileges(hToken, false, &tkp, sizeof(tkp), nullptr, nullptr)) {
+        if (AdjustTokenPrivileges(token, false, &tkp, sizeof(tkp), nullptr, nullptr)) {
           proc = OpenProcess(PROCESS_ALL_ACCESS, false, proc_id);
         }
       }
-      CloseHandle(hToken);
+      CloseHandle(token);
     }
     if (!proc) {
       proc = OpenProcess(PROCESS_ALL_ACCESS, false, proc_id);
