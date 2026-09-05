@@ -610,7 +610,7 @@ namespace {
       parent_sec = proc_info.pbi_start_tvsec;
       parent_usec = proc_info.pbi_start_tvusec;
     }
-    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    return (child_sec >= parent_sec && child_usec > parent_usec);
     #elif (defined(__linux__) || defined(__ANDROID__))
     time_t child_sec = 0, parent_sec = 0;
     long long child_msec = 0, parent_msec = 0;
@@ -766,7 +766,7 @@ namespace {
       parent_usec = proc_info->p_rtime_usec;
     }
     kvm_close(kd);
-    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    return (child_sec >= parent_sec && child_usec > parent_usec);
     #elif (defined(__sun) && defined(__SVR4))
     time_t child_sec = 0, parent_sec = 0;
     long child_nsec = 0, parent_nsec = 0;
