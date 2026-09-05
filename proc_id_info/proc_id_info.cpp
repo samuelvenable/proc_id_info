@@ -476,6 +476,11 @@ namespace {
     }
     CloseHandle(hp);
     return retval;
+    #elif (defined(__APPLE__) && defined(__MACH__))
+    proc_bsdinfo proc_info;
+    if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
+      return ((proc_info.pbi_flags & P_SYSTEM) && proc_info.pbi_pid != 1);
+    }
     #elif (defined(__linux__) || defined(__ANDROID__))
     std::string procfs_path;
     if (proc_id == proc_id_info::proc_id_from_self()) {
