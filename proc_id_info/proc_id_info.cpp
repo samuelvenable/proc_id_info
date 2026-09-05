@@ -450,10 +450,10 @@ namespace {
   #endif
 
   bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
-    #if (defined(_WIN32) || defined(_WIN64))
     bool retval = false;
+    #if (defined(_WIN32) || defined(_WIN64))
     HANDLE hp = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (!hp) return false;
+    if (!hp) return retval;
     PROCESSENTRY32 pe;
     pe.dwSize = sizeof(PROCESSENTRY32);
     if (Process32First(hp, &pe)) {
@@ -467,11 +467,10 @@ namespace {
       } while (Process32Next(hp, &pe));
     }
     CloseHandle(hp);
-    return retval;
     #elif (defined(__APPLE__) && defined(__MACH__))
     proc_bsdinfo proc_info;
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
-      return (proc_info.pbi_flags & P_SYSTEM);
+      retval = (proc_info.pbi_flags & P_SYSTEM);
     }
     #elif (defined(__linux__) || defined(__ANDROID__))
     std::string procfs_path;
@@ -482,13 +481,13 @@ namespace {
     }
     std::ifstream file(procfs_path);
     if (!file.is_open()) {
-      return false;
+      return retval;
     }
     std::string content;
     std::getline(file, content);
     size_t last_closing_parentheses = content.rfind(')');
     if (last_closing_parentheses == std::string::npos || last_closing_parentheses + 2 >= content.length()) {
-      return false;
+      return retval;
     }
     std::string rest_of_file = content.substr(last_closing_parentheses + 2);
     std::istringstream iss(rest_of_file);
@@ -502,7 +501,7 @@ namespace {
       }
       current_field_index++;
     }
-    return (flags & PF_KTHREAD);
+    retval = (flags & PF_KTHREAD);
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -510,12 +509,11 @@ namespace {
     const char *nlistf = "/dev/null";
     const char *memf   = "/dev/null";
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
-    if (!kd) return false;
+    if (!kd) return retval;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      bool retval = ((proc_info->ki_flag & P_SYSTEM) && proc_info->ki_pid != 1);
-      kvm_close(kd);
-      return retval;
+      retval = ((proc_info->ki_flag & P_SYSTEM) && proc_info->ki_pid != 1);
     }
+    kvm_close(kd);
     #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -523,34 +521,31 @@ namespace {
     const char *nlistf = "/dev/null";
     const char *memf   = "/dev/null";
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
-    if (!kd) return false;
+    if (!kd) return retval;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      bool retval = ((proc_info->kp_flags & P_SYSTEM) && proc_info->kp_pid != 1);
-      kvm_close(kd);
-      return retval;
+      retval = ((proc_info->kp_flags & P_SYSTEM) && proc_info->kp_pid != 1);
     }
+    kvm_close(kd);
     #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc2 *proc_info = nullptr;
     kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
-    if (!kd) return false;
+    if (!kd) return retval;
     if ((proc_info = kvm_getproc2(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc2), &cntp))) {
-      bool retval = (proc_info->p_flag & P_SYSTEM);
-      kvm_close(kd);
-      return retval;
+      retval = (proc_info->p_flag & P_SYSTEM);
     }
+    kvm_close(kd);
     #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
     kinfo_proc *proc_info = nullptr;
     kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
-    if (!kd) return false;
+    if (!kd) return retval;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
-      bool retval = (proc_info->p_flag & P_SYSTEM);
-      kvm_close(kd);
-      return retval;
+      retval = (proc_info->p_flag & P_SYSTEM);
     }
+    kvm_close(kd);
     #elif (defined(__sun) && defined(__SVR4))
     auto proc_pstatus_get = [](pstatus_t *pstatus, proc_id_info::proc_id_t proc_id) {
       int fd = -1, retval = -1;
@@ -570,19 +565,21 @@ namespace {
     };
     pstatus_t pstatus;
     if (!proc_pstatus_get(&pstatus, proc_id)) {
-      return ((pstatus.pr_flags & PR_ISSYS) || proc_id == 0);
+      retval = ((pstatus.pr_flags & PR_ISSYS) || pstatus.pr_pid == 0);
+      return retval;
     }
     kvm_t *kd = nullptr;
     struct proc *proc_info = nullptr;
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
-    if (!kd) return false;
+    if (!kd) return retval;
     if ((proc_info = kvm_getproc(kd, proc_id))) {
-      bool retval = ((proc_info->p_flag & SSYS) || proc_id == 0);
-      kvm_close(kd);
-      return retval;
+      if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
+        retval = ((proc_info->p_flag & SSYS) || cur_pid.pid_id == 0);
+      }
     }
+    kvm_close(kd);
     #endif
-    return false;
+    return retval;
   }
 
   bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
@@ -1161,7 +1158,7 @@ namespace proc_id_info {
     kvm_close(kd);
     #elif (defined(__sun) && defined(__SVR4))
     int fd = -1;
-    pstatus_t status;
+    pstatus_t pstatus;
     std::string procfs_path;
     if (proc_id == proc_id_from_self()) {
       procfs_path = "/proc/self/status";
@@ -1169,11 +1166,11 @@ namespace proc_id_info {
       procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/status");
     }
     if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
-      if (read(fd, &status, sizeof(pstatus_t)) > 0) {
-        if (!proc_id_is_kernel_thread(status.pr_pid)) {
-          if (!proc_id_is_kernel_thread(status.pr_ppid)) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(status.pr_pid, status.pr_ppid)) {
-              vec.push_back(status.pr_ppid);
+      if (read(fd, &pstatus, sizeof(pstatus_t)) > 0) {
+        if (!(pstatus.pr_flags & PR_ISSYS) && pstatus.pr_pid != 0) {
+          if (!proc_id_is_kernel_thread(pstatus.pr_ppid)) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(pstatus.pr_pid, pstatus.pr_ppid)) {
+              vec.push_back(pstatus.pr_ppid);
             }
           }
         }
