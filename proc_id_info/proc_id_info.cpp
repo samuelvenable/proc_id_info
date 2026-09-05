@@ -1426,11 +1426,6 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     finish:
     #endif
