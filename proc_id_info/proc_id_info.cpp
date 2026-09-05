@@ -501,7 +501,7 @@ namespace {
         message_pump();
         if (pe.th32ProcessID == proc_id) {
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
-          retval = (!(len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))));
+          retval = (len < 4 || comm.substr(len - 4).compare(".exe"));
           break;
         }
       } while (Process32Next(hp, &pe));
@@ -659,7 +659,7 @@ namespace proc_id_info {
       do {
         message_pump();
         std::string comm = pe.szExeFile; std::size_t len = comm.length();
-        if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
+        if (len >= 4 && !comm.substr(len - 4).compare(".exe")) {
           vec.push_back(pe.th32ProcessID);
         }
       } while (Process32Next(hp, &pe));
@@ -861,7 +861,7 @@ namespace proc_id_info {
         message_pump();
         if (pe.th32ProcessID == proc_id) {
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
-          if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
+          if (len >= 4 && !comm.substr(len - 4).compare(".exe")) {
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
               vec.push_back(pe.th32ParentProcessID);
             }
@@ -1067,7 +1067,7 @@ namespace proc_id_info {
         message_pump();
         if (pe.th32ParentProcessID == parent_proc_id) {
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
-          if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
+          if (len >= 4 && !comm.substr(len - 4).compare(".exe")) {
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
               vec.push_back(pe.th32ProcessID);
             }
