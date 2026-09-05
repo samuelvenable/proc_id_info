@@ -59,7 +59,6 @@ SOFTWARE.
 #elif (defined(__linux__) || defined(__ANDROID__))
 #include <dirent.h>
 #if __has_include(<linux/sched.h>)
-// For defining PF_KTHREAD when possible...
 #include <linux/sched.h>
 #endif
 #elif ((defined(__FreeBSD__) || defined(__FreeBSD_kernel__)) || defined(__DragonFly__) || defined(__OpenBSD__))
@@ -91,7 +90,6 @@ SOFTWARE.
 #endif
 #if (defined(__linux__) || defined(__ANDROID__))
 #if !defined(PF_KTHREAD)
-// Normally defined in <linux/sched.h> when present...
 #define PF_KTHREAD 0x00200000
 #endif
 #endif
@@ -660,8 +658,6 @@ namespace proc_id_info {
     if (Process32First(hp, &pe)) {
       do {
         message_pump();
-        // If the szExeFile member of the PROCESSENTRY32 structure has 
-        // no *.exe file extension, that means it is a kernel thread...
         std::string comm = pe.szExeFile; std::size_t len = comm.length();
         if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
           vec.push_back(pe.th32ProcessID);
@@ -672,8 +668,6 @@ namespace proc_id_info {
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::vector<proc_id_t> proc_info;
     proc_info.resize(proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0));
-    // The proc_listpids(...) API does not include kernel threads...
-    // Use the sysctl(...) API instead if you need to include kernel threads...
     int cntp = proc_listpids(PROC_ALL_PIDS, 0, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
@@ -688,9 +682,6 @@ namespace proc_id_info {
     while ((ent = readdir(proc))) {
       if (isdigit(*ent->d_name)) {
         tgid = strtoul(ent->d_name, nullptr, 10);
-        // Checks if the PF_KTHREAD flag is not present on Linux / Android...
-        // Checks if the PR_ISSYS flag is not present on Solaris / illumos...
-        // If these flags are not set then the process is not a kernel thread...
         if (!proc_id_is_kernel_thread(tgid)) {
           vec.push_back(tgid);
         }
@@ -705,13 +696,8 @@ namespace proc_id_info {
     const char *memf   = "/dev/null";
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
-    // Using KERN_PROC_PROC instead of KERN_PROC_ALL on FreeBSD omits kernel threads...
-    // Checking if the P_SYSTEM flag is not set on the iterated process does the same thing...
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PROC, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        // FreeBSD considers a PID of one to be a kernel thread for some reason...
-        // For consistency with the other Unix-like platforms we do not omit a PID of one...
-        // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].ki_flag & P_SYSTEM) || proc_info[i].ki_pid == 1) {
           vec.push_back(proc_info[i].ki_pid);
         }
@@ -728,9 +714,6 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        // DragonFly BSD considers a PID of one to be a kernel thread for some reason...
-        // For consistency with the other Unix-like platforms we do not omit a PID of one...
-        // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].kp_flags & P_SYSTEM) || proc_info[i].kp_pid == 1) {
           vec.push_back(proc_info[i].kp_pid);
         }
@@ -757,8 +740,6 @@ namespace proc_id_info {
     kinfo_proc *proc_info = nullptr;
     kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
     if (!kd) return vec;
-    // Using KERN_PROC_ALL instead of KERN_PROC_KTHREAD on OpenBSD omits kernel threads...
-    // Checking if the P_SYSTEM flag is not set on the iterated process does the same thing...
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc), &cntp))) {
       for (int i = cntp - 1; i >= 0; i--) {
         if (!(proc_info[i].p_flag & P_SYSTEM)) {
@@ -778,8 +759,6 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     while ((proc_info = kvm_nextproc(kd))) {
-      // The Solaris / illumos SSYS flag is basically the same thing as the P_SYSTEM flag on *BSD platforms...
-      // If the SSYS flag is not set on the currently iterated process, that means it is not a kernel thread...
       if (!(proc_info->p_flag & SSYS)) {
         if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
           vec.insert(vec.begin(), cur_pid.pid_id);
@@ -790,11 +769,9 @@ namespace proc_id_info {
     finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
-    // Removes a PID of four, (it is not a user-level process on Windows)...
     auto itr = std::remove(vec.begin(), vec.end(), 4);
     vec.erase(itr, vec.end());
     #endif
-    // Removes a PID of zero, (it is not a user-level process)...
     auto itr = std::remove(vec.begin(), vec.end(), 0);
     vec.erase(itr, vec.end());
     std::sort(vec.begin(), vec.end());
@@ -883,8 +860,6 @@ namespace proc_id_info {
       do {
         message_pump();
         if (pe.th32ProcessID == proc_id) {
-          // If the szExeFile member of the PROCESSENTRY32 structure has
-          // no *.exe file extension, that means it is a kernel thread...
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
@@ -904,16 +879,12 @@ namespace proc_id_info {
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     proc_bsdinfo proc_info;
-    // The proc_pidinfo(...) API does not include kernel threads...
-    // Use the sysctl(...) API instead if you need to include kernel threads...
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
       if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info.pbi_ppid)) {
         vec.push_back(proc_info.pbi_ppid);
       }
     }
     #elif (defined(__linux__) || defined(__ANDROID__))
-    // Checks if the PF_KTHREAD flag is not present on Linux / Android...
-    // If this flag is not set then the process is not a kernel thread...
     if (!proc_id_is_kernel_thread(proc_id)) {
       char buffer[BUFSIZ];
       FILE *file = nullptr;
@@ -955,9 +926,6 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      // FreeBSD considers a PID of one to be a kernel thread for some reason...
-      // For consistency with the other Unix-like platforms we do not omit a PID of one...
-      // The Unix-like system init process, (a PID of one), is not a kernel thread...
       if (!(proc_info->ki_flag & P_SYSTEM) || proc_info->ki_ppid == 1) {
         if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->ki_ppid)) {
           vec.push_back(proc_info->ki_ppid);
@@ -980,9 +948,6 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      // DragonFly BSD considers a PID of one to be a kernel thread for some reason...
-      // For consistency with the other Unix-like platforms we do not omit a PID of one...
-      // The Unix-like system init process, (a PID of one), is not a kernel thread...
       if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_ppid == 1) {
         if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->kp_ppid)) {
           vec.push_back(proc_info->kp_ppid);
@@ -1037,8 +1002,6 @@ namespace proc_id_info {
     };
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__sun) && defined(__SVR4))
-    // Checks if the PR_ISSYS flag is not present on Solaris / illumos...
-    // If this flag is not set then the process is not a kernel thread...
     if (!proc_id_is_kernel_thread(proc_id)) {
       int fd = -1;
       pstatus_t status;
@@ -1063,8 +1026,6 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getproc(kd, proc_id))) {
-      // The Solaris / illumos SSYS flag is basically the same thing as the P_SYSTEM flag on *BSD platforms...
-      // If the SSYS flag is not set on the currently iterated process, that means it is not a kernel thread...
       if (!(proc_info->p_flag & SSYS)) {
         if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
           vec.push_back(proc_info->p_ppid);
@@ -1081,12 +1042,10 @@ namespace proc_id_info {
     finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
-    // Removes a PID of four, (it is not a user-level process on Windows)...
     if (!vec.empty() && vec[0] == 4) {
       vec.clear();
     }
     #endif
-    // Removes a PID of zero, (it is not a user-level process)...
     if (!vec.empty() && vec[0] == 0) {
       vec.clear();
     }
@@ -1107,8 +1066,6 @@ namespace proc_id_info {
       do {
         message_pump();
         if (pe.th32ParentProcessID == parent_proc_id) {
-          // If the szExeFile member of the PROCESSENTRY32 structure has
-          // no *.exe file extension, that means it is a kernel thread...
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len < 4 || (len >= 4 && !comm.substr(len - 4).compare(".exe"))) {
             if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
@@ -1128,8 +1085,6 @@ namespace proc_id_info {
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::vector<proc_id_t> proc_info;
     proc_info.resize(proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, nullptr, 0));
-    // The proc_listpids(...) API does not include kernel threads...
-    // Use the sysctl(...) API instead if you need to include kernel threads...
     int cntp = proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
@@ -1146,9 +1101,6 @@ namespace proc_id_info {
     while ((ent = readdir(proc))) {
       if (isdigit(*ent->d_name)) {
         tgid = strtoul(ent->d_name, nullptr, 10);
-        // Checks if the PF_KTHREAD flag is not present on Linux / Android...
-        // Checks if the PR_ISSYS flag is not present on Solaris / illumos...
-        // If these flags are not set then the process is not a kernel thread...
         if (!proc_id_is_kernel_thread(tgid)) {
           std::vector<proc_id_t> proc_info = parent_proc_id_from_proc_id(tgid);
           if (!proc_info.empty() && proc_info[0] == parent_proc_id) {
@@ -1174,13 +1126,8 @@ namespace proc_id_info {
     const char *memf   = "/dev/null";
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
-    // Using KERN_PROC_PROC instead of KERN_PROC_ALL on FreeBSD omits kernel threads...
-    // Checking if the P_SYSTEM flag is not set on the iterated process does the same thing...
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PROC, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        // FreeBSD considers a PID of one to be a kernel thread for some reason...
-        // For consistency with the other Unix-like platforms we do not omit a PID of one...
-        // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].ki_flag & P_SYSTEM) || proc_info[i].ki_ppid == 1) {
           if (proc_info[i].ki_ppid == parent_proc_id) {
             if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].ki_pid, proc_info[i].ki_ppid)) {
@@ -1207,9 +1154,6 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        // DragonFly BSD considers a PID of one to be a kernel thread for some reason...
-        // For consistency with the other Unix-like platforms we do not omit a PID of one...
-        // The Unix-like system init process, (a PID of one), is not a kernel thread...
         if (!(proc_info[i].kp_flags & P_SYSTEM) || proc_info[i].kp_ppid == 1) {
           if (proc_info[i].kp_ppid == parent_proc_id) {
             if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].kp_pid, proc_info[i].kp_ppid)) {
@@ -1256,8 +1200,6 @@ namespace proc_id_info {
     kinfo_proc *proc_info = nullptr;
     kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
     if (!kd) return vec;
-    // Using KERN_PROC_ALL instead of KERN_PROC_KTHREAD on OpenBSD omits kernel threads...
-    // Checking if the P_SYSTEM flag is not set on the iterated process does the same thing...
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc), &cntp))) {
       for (int i = cntp - 1; i >= 0; i--) {
         if (!(proc_info[i].p_flag & P_SYSTEM)) {
@@ -1287,8 +1229,6 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     while ((proc_info = kvm_nextproc(kd))) {
-      // The Solaris / illumos SSYS flag is basically the same thing as the P_SYSTEM flag on *BSD platforms...
-      // If the SSYS flag is not set on the currently iterated process, that means it is not a kernel thread...
       if (!(proc_info->p_flag & SSYS)) {
         if (proc_info->p_ppid == parent_proc_id) {
           if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
@@ -1309,11 +1249,9 @@ namespace proc_id_info {
     finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
-    // Removes a PID of four, (it is not a user-level process on Windows)...
     auto itr = std::remove(vec.begin(), vec.end(), 4);
     vec.erase(itr, vec.end());
     #endif
-    // Removes a PID of zero, (it is not a user-level process)...
     auto itr = std::remove(vec.begin(), vec.end(), 0);
     vec.erase(itr, vec.end());
     std::sort(vec.begin(), vec.end());
@@ -1768,8 +1706,6 @@ namespace proc_id_info {
         }
       }
     } else {
-      // __illumos__ macro is not defined by the OS and 
-      // should be added manually by your build system:
       #if defined(__illumos__)
       int err = 0;
       struct ps_prochandle *P = nullptr;
