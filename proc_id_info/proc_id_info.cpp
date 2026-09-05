@@ -451,14 +451,6 @@ namespace {
 
   bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
     #if (defined(_WIN32) || defined(_WIN64))
-    if (proc_id == 4) {
-      return true;
-    }
-    #endif
-    if (proc_id == 0) {
-      return true;
-    }
-    #if (defined(_WIN32) || defined(_WIN64))
     bool retval = false;
     HANDLE hp = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (!hp) return false;
@@ -578,14 +570,14 @@ namespace {
     };
     pstatus_t pstatus;
     if (!proc_pstatus_get(&pstatus, proc_id)) {
-      return (pstatus.pr_flags & PR_ISSYS);
+      return ((pstatus.pr_flags & PR_ISSYS) || proc_id == 0);
     }
     kvm_t *kd = nullptr;
     struct proc *proc_info = nullptr;
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return false;
     if ((proc_info = kvm_getproc(kd, proc_id))) {
-      bool retval = (proc_info->p_flag & SSYS);
+      bool retval = ((proc_info->p_flag & SSYS) || proc_id == 0);
       kvm_close(kd);
       return retval;
     }
@@ -861,7 +853,9 @@ namespace proc_id_info {
     int cntp = proc_listpids(PROC_ALL_PIDS, 0, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
-        vec.push_back(proc_info[i]);
+        if (!proc_id_is_kernel_thread(proc_info[i])) {
+          vec.push_back(proc_info[i]);
+        }
       }
     }
     #elif ((defined(__linux__) || defined(__ANDROID__)) || (defined(__sun) && defined(__SVR4)))
@@ -949,23 +943,14 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     while ((proc_info = kvm_nextproc(kd))) {
-      if (!(proc_info->p_flag & SSYS)) {
-        if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
+      if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
+        if (!(proc_info->p_flag & SSYS) && cur_pid.pid_id != 0) {
           vec.insert(vec.begin(), cur_pid.pid_id);
         }
       }
     }
     kvm_close(kd);
     finish:
-    #endif
-    #if (defined(_WIN32) || defined(_WIN64))
-    auto itr = std::remove(vec.begin(), vec.end(), 4);
-    vec.erase(itr, vec.end());
-    itr = std::remove(vec.begin(), vec.end(), 0);
-    vec.erase(itr, vec.end());
-    #else
-    auto itr = std::remove(vec.begin(), vec.end(), 0);
-    vec.erase(itr, vec.end());
     #endif
     std::sort(vec.begin(), vec.end());
     return vec;
@@ -1055,8 +1040,10 @@ namespace proc_id_info {
         if (pe.th32ProcessID == proc_id) {
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len >= 4 && !comm.substr(len - 4).compare(".exe")) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
-              vec.push_back(pe.th32ParentProcessID);
+            if (!proc_id_is_kernel_thread(pe.th32ParentProcessID)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
+                vec.push_back(pe.th32ParentProcessID);
+              }
             }
           }
           break;
@@ -1064,52 +1051,46 @@ namespace proc_id_info {
       } while (Process32Next(hp, &pe));
     }
     CloseHandle(hp);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     proc_bsdinfo proc_info;
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
-      if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info.pbi_ppid)) {
-        vec.push_back(proc_info.pbi_ppid);
+      if (!(proc_info.pbi_flags & P_SYSTEM)) {
+        if (!proc_id_is_kernel_thread(proc_info.pbi_ppid)) {
+          if (proc_id_and_parent_proc_id_compare_creation_time(proc_info.pbi_pid, proc_info.pbi_ppid)) {
+            vec.push_back(proc_info.pbi_ppid);
+          }
+        }
       }
     }
     #elif (defined(__linux__) || defined(__ANDROID__))
-    if (!proc_id_is_kernel_thread(proc_id)) {
-      char buffer[BUFSIZ];
-      FILE *file = nullptr;
-      std::string procfs_path;
-      if (proc_id == proc_id_from_self()) {
-        procfs_path = "/proc/self/stat";
-      } else {
-        procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/stat");
-      }
-      if ((file = fopen(procfs_path.c_str(), "r"))) {
-        std::size_t size = fread(buffer, sizeof(char), sizeof(buffer), file);
-        if (size > 0) {
-          char *token = nullptr;
-          if (((token = strtok(buffer, " "))) &&
-            ((token = strtok(nullptr, " "))) &&
-            ((token = strtok(nullptr, " "))) &&
-            ((token = strtok(nullptr, " ")))) {
-            proc_id_t parent_proc_id = strtoul(token, nullptr, 10);
-            if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, parent_proc_id)) {
-              vec.push_back(parent_proc_id);
+    char buffer[BUFSIZ];
+    std::size_t size = 0;
+    FILE *file = nullptr;
+    std::string procfs_path;
+    if (proc_id == proc_id_from_self()) {
+      procfs_path = "/proc/self/stat";
+    } else {
+      procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/stat");
+    }
+    if ((file = fopen(procfs_path.c_str(), "r"))) {
+      if ((size = fread(buffer, sizeof(char), sizeof(buffer), file)) > 0) {
+        char *token = nullptr;
+        if (((token = strtok(buffer, " "))) &&
+          ((token = strtok(nullptr, " "))) &&
+          ((token = strtok(nullptr, " "))) &&
+          ((token = strtok(nullptr, " ")))) {
+          proc_id_t parent_proc_id = strtoul(token, nullptr, 10);
+          if (!proc_id_is_kernel_thread(proc_id)) {
+            if (!proc_id_is_kernel_thread(parent_proc_id)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, parent_proc_id)) {
+                vec.push_back(parent_proc_id);
+              }
             }
           }
         }
         fclose(file);
       }
     }
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1119,19 +1100,15 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      if (!(proc_info->ki_flag & P_SYSTEM) || proc_info->ki_ppid == 1) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->ki_ppid)) {
-          vec.push_back(proc_info->ki_ppid);
+      if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->ki_pid == 1) {
+        if (!proc_id_is_kernel_thread(proc_info->ki_ppid)) {
+          if (proc_id_and_parent_proc_id_compare_creation_time(proc_info->ki_pid, proc_info->ki_ppid)) {
+            vec.push_back(proc_info->ki_ppid);
+          }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1141,19 +1118,15 @@ namespace proc_id_info {
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
-      if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_ppid == 1) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->kp_ppid)) {
-          vec.push_back(proc_info->kp_ppid);
+      if (!(proc_info->kp_flags & P_SYSTEM) || proc_info->kp_pid == 1) {
+        if (!proc_id_is_kernel_thread(proc_info->kp_ppid)) {
+          if (proc_id_and_parent_proc_id_compare_creation_time(proc_info->kp_pid, proc_info->kp_ppid)) {
+            vec.push_back(proc_info->kp_ppid);
+          }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1162,18 +1135,14 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getproc2(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc2), &cntp))) {
       if (!(proc_info->p_flag & P_SYSTEM)) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
-          vec.push_back(proc_info->p_ppid);
+        if (!proc_id_is_kernel_thread(proc_info->p_ppid)) {
+          if (proc_id_and_parent_proc_id_compare_creation_time(proc_info->p_pid, proc_info->p_ppid)) {
+            vec.push_back(proc_info->p_ppid);
+          }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1182,34 +1151,34 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
       if (!(proc_info->p_flag & P_SYSTEM)) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
-          vec.push_back(proc_info->p_ppid);
+        if (!proc_id_is_kernel_thread(proc_info->p_ppid)) {
+          if (proc_id_and_parent_proc_id_compare_creation_time(proc_info->p_pid, proc_info->p_ppid)) {
+            vec.push_back(proc_info->p_ppid);
+          }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__sun) && defined(__SVR4))
-    if (!proc_id_is_kernel_thread(proc_id)) {
-      int fd = -1;
-      pstatus_t status;
-      std::string procfs_path;
-      if (proc_id == proc_id_from_self()) {
-        procfs_path = "/proc/self/status";
-      } else {
-        procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/status");
-      }
-      if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
-        if (read(fd, &status, sizeof(pstatus_t)) > 0) {
-          vec.push_back(status.pr_ppid);
+    int fd = -1;
+    pstatus_t status;
+    std::string procfs_path;
+    if (proc_id == proc_id_from_self()) {
+      procfs_path = "/proc/self/status";
+    } else {
+      procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/status");
+    }
+    if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
+      if (read(fd, &status, sizeof(pstatus_t)) > 0) {
+        if (!proc_id_is_kernel_thread(status.pr_pid)) {
+          if (!proc_id_is_kernel_thread(status.pr_ppid)) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(status.pr_pid, status.pr_ppid)) {
+              vec.push_back(status.pr_ppid);
+            }
+          }
         }
-        close(fd);
       }
+      close(fd);
     }
     kvm_t *kd = nullptr;
     struct proc *proc_info = nullptr;
@@ -1219,29 +1188,19 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     if ((proc_info = kvm_getproc(kd, proc_id))) {
-      if (!(proc_info->p_flag & SSYS)) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info->p_ppid)) {
-          vec.push_back(proc_info->p_ppid);
+      if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
+        if (!(proc_info->p_flag & SSYS) && cur_pid.pid_id != 0) {
+          if (!proc_id_is_kernel_thread(proc_info->p_ppid)) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(cur_pid.pid_id, proc_info->p_ppid)) {
+              vec.push_back(proc_info->p_ppid);
+            }
+          }
         }
       }
     }
     kvm_close(kd);
     finish:
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #endif
-    #if (defined(_WIN32) || defined(_WIN64))
-    if (!vec.empty() && vec[0] == 4) {
-      vec.clear();
-    }
-    #endif
-    if (!vec.empty() && vec[0] == 0) {
-      vec.clear();
-    }
     return vec;
   }
 
@@ -1261,28 +1220,28 @@ namespace proc_id_info {
         if (pe.th32ParentProcessID == parent_proc_id) {
           std::string comm = pe.szExeFile; std::size_t len = comm.length();
           if (len >= 4 && !comm.substr(len - 4).compare(".exe")) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
-              vec.push_back(pe.th32ProcessID);
+            if (!proc_id_is_kernel_thread(pe.th32ParentProcessID)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(pe.th32ProcessID, pe.th32ParentProcessID)) {
+                vec.push_back(pe.th32ProcessID);
+              }
             }
           }
         }
       } while (Process32Next(hp, &pe));
     }
     CloseHandle(hp);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::vector<proc_id_t> proc_info;
     proc_info.resize(proc_listpids(PROC_PPID_ONLY, (std::uint32_t)parent_proc_id, nullptr, 0));
     int cntp = proc_listpids(PROC_PPID_ONLY, (std::uint32_t)parent_proc_id, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
-        if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i], parent_proc_id)) {
-          vec.push_back(proc_info[i]);
+        if (!proc_id_is_kernel_thread(proc_info[i])) {
+          if (!proc_id_is_kernel_thread(parent_proc_id)) {
+            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i], parent_proc_id)) {
+              vec.push_back(proc_info[i]);
+            }
+          }
         }
       }
     }
@@ -1294,25 +1253,19 @@ namespace proc_id_info {
     while ((ent = readdir(proc))) {
       if (isdigit(*ent->d_name)) {
         tgid = strtoul(ent->d_name, nullptr, 10);
-        if (!proc_id_is_kernel_thread(tgid)) {
-          std::vector<proc_id_t> proc_info = parent_proc_id_from_proc_id(tgid);
-          if (!proc_info.empty() && proc_info[0] == parent_proc_id) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(tgid, proc_info[0])) {
-              vec.push_back(tgid);
+        std::vector<proc_id_t> proc_info = parent_proc_id_from_proc_id(tgid);
+        if (!proc_info.empty() && proc_info[0] == parent_proc_id) {
+          if (!proc_id_is_kernel_thread(tgid)) {
+            if (!proc_id_is_kernel_thread(proc_info[0])) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(tgid, proc_info[0])) {
+                vec.push_back(tgid);
+              }
             }
           }
         }
       }
     }
     closedir(proc);
-    #if (defined(__linux__) || defined(__ANDROID__))
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
-    #endif
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1323,22 +1276,18 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PROC, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        if (!(proc_info[i].ki_flag & P_SYSTEM) || proc_info[i].ki_ppid == 1) {
-          if (proc_info[i].ki_ppid == parent_proc_id) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].ki_pid, proc_info[i].ki_ppid)) {
-              vec.push_back(proc_info[i].ki_pid);
+        if (proc_info[i].ki_ppid == parent_proc_id) {
+          if (!(proc_info[i].ki_flag & P_SYSTEM) || proc_info[i].ki_pid == 1) {
+            if (!proc_id_is_kernel_thread(proc_info[i].ki_ppid)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].ki_pid, proc_info[i].ki_ppid)) {
+                vec.push_back(proc_info[i].ki_pid);
+              }
             }
           }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1349,22 +1298,18 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, &cntp))) {
       for (int i = 0; i < cntp; i++) {
-        if (!(proc_info[i].kp_flags & P_SYSTEM) || proc_info[i].kp_ppid == 1) {
-          if (proc_info[i].kp_ppid == parent_proc_id) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].kp_pid, proc_info[i].kp_ppid)) {
-              vec.push_back(proc_info[i].kp_pid);
+        if (proc_info[i].kp_ppid == parent_proc_id) {
+          if (!(proc_info[i].kp_flags & P_SYSTEM) || proc_info[i].kp_pid == 1) {
+            if (!proc_id_is_kernel_thread(proc_info[i].kp_ppid)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].kp_pid, proc_info[i].kp_ppid)) {
+                vec.push_back(proc_info[i].kp_pid);
+              }
             }
           }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1373,22 +1318,18 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getproc2(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc2), &cntp))) {
       for (int i = cntp - 1; i >= 0; i--) {
-        if (!(proc_info[i].p_flag & P_SYSTEM)) {
-          if (proc_info[i].p_ppid == parent_proc_id) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
-              vec.push_back(proc_info[i].p_pid);
+        if (proc_info[i].p_ppid == parent_proc_id) {
+          if (!(proc_info[i].p_flag & P_SYSTEM)) {
+            if (!proc_id_is_kernel_thread(proc_info[i].p_ppid)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
+                vec.push_back(proc_info[i].p_pid);
+              }
             }
           }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1397,22 +1338,18 @@ namespace proc_id_info {
     if (!kd) return vec;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc), &cntp))) {
       for (int i = cntp - 1; i >= 0; i--) {
-        if (!(proc_info[i].p_flag & P_SYSTEM)) {
-          if (proc_info[i].p_ppid == parent_proc_id) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
-              vec.push_back(proc_info[i].p_pid);
+        if (proc_info[i].p_ppid == parent_proc_id) {
+          if (!(proc_info[i].p_flag & P_SYSTEM)) {
+            if (!proc_id_is_kernel_thread(proc_info[i].p_ppid)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i].p_pid, proc_info[i].p_ppid)) {
+                vec.push_back(proc_info[i].p_pid);
+              }
             }
           }
         }
       }
     }
     kvm_close(kd);
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #endif
     #if (defined(__sun) && defined(__SVR4))
     struct pid cur_pid;
@@ -1424,11 +1361,13 @@ namespace proc_id_info {
     kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
     if (!kd) return vec;
     while ((proc_info = kvm_nextproc(kd))) {
-      if (!(proc_info->p_flag & SSYS)) {
+      if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
         if (proc_info->p_ppid == parent_proc_id) {
-          if (kvm_kread(kd, (std::uintptr_t)proc_info->p_pidp, &cur_pid, sizeof(cur_pid)) != -1) {
-            if (proc_id_and_parent_proc_id_compare_creation_time(cur_pid.pid_id, proc_info->p_ppid)) {
-              vec.insert(vec.begin(), cur_pid.pid_id);
+          if (!(proc_info->p_flag & SSYS) && cur_pid.pid_id != 0) {
+            if (!proc_id_is_kernel_thread(proc_info->p_ppid)) {
+              if (proc_id_and_parent_proc_id_compare_creation_time(cur_pid.pid_id, proc_info->p_ppid)) {
+                vec.insert(vec.begin(), cur_pid.pid_id);
+              }
             }
           }
         }
@@ -1436,21 +1375,6 @@ namespace proc_id_info {
     }
     kvm_close(kd);
     finish:
-    struct is_invalid {
-      bool operator()(proc_id_t proc_id) {
-        return (proc_id_is_kernel_thread(proc_id));
-      }
-    };
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
-    #endif
-    #if (defined(_WIN32) || defined(_WIN64))
-    auto itr = std::remove(vec.begin(), vec.end(), 4);
-    vec.erase(itr, vec.end());
-    itr = std::remove(vec.begin(), vec.end(), 0);
-    vec.erase(itr, vec.end());
-    #else
-    auto itr = std::remove(vec.begin(), vec.end(), 0);
-    vec.erase(itr, vec.end());
     #endif
     std::sort(vec.begin(), vec.end());
     return vec;
@@ -1967,7 +1891,7 @@ namespace proc_id_info {
     #elif (defined(__APPLE__) && defined(__MACH__))
     proc_bsdinfo proc_info;
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
-      if (proc_id_and_parent_proc_id_compare_creation_time(proc_id, proc_info.pbi_ppid)) {
+      if (!(proc_info.pbi_flags & P_SYSTEM)) {
         comm = proc_info.pbi_comm;
       }
     }
