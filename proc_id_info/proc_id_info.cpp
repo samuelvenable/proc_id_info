@@ -1061,7 +1061,6 @@ namespace proc_id_info {
     }
     #elif (defined(__linux__) || defined(__ANDROID__))
     char buffer[BUFSIZ];
-    std::size_t size = 0;
     FILE *file = nullptr;
     std::string procfs_path;
     if (proc_id == proc_id_from_self()) {
@@ -1070,7 +1069,7 @@ namespace proc_id_info {
       procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/stat");
     }
     if ((file = fopen(procfs_path.c_str(), "r"))) {
-      if ((size = fread(buffer, sizeof(char), sizeof(buffer), file)) > 0) {
+      if ((fread(buffer, sizeof(char), sizeof(buffer), file)) > 0) {
         char *token = nullptr;
         if (((token = strtok(buffer, " "))) &&
           ((token = strtok(nullptr, " "))) &&
