@@ -691,7 +691,7 @@ namespace {
     if (!kd) return false;
     if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
       child_sec = proc_info->ki_start.tv_sec;
-      child_usec = proc_info->ki_startztv_usec;
+      child_usec = proc_info->ki_start.tv_usec;
     }
     kvm_close(kd);
     kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
