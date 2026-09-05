@@ -45,7 +45,7 @@ Supports Windows, macOS, GNU/Linux, FreeBSD, DragonFly BSD, NetBSD, OpenBSD, Sol
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-`std::string proc_id_info::comm_from_proc_id(proc_id_info::proc_id_t proc_id);` returns the executable filename, (or command name), associated with the given process identifier in the proc_id argument, not including the executable filename's path component. std::string::empty() is true if the function has failed. Some platforms have an official API to get this information, (most Unix-likes do), however it is truncated to MAXCOMLEN or something similar, which is often a very short amount of characters, not fit for longer filenames. Instead of using the official API for this purpose, this function retrieves the absolute pathname of the executable using an internal call to exe_from_proc_id(), and then removes the path component from the resulting filename, (thus giving the command name).
+`std::string proc_id_info::comm_from_proc_id(proc_id_info::proc_id_t proc_id);` returns the executable filename, (or command name), associated with the given process identifier in the proc_id argument, not including the executable filename's path component. std::string::empty() is true if the function has failed. If the executable filename is too long it will be truncated by a implementation-defined byte count, (usually represented by the MAXCOMLEN macro on Unix-likes).
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
 
