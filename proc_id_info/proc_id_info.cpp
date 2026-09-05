@@ -31,11 +31,9 @@ SOFTWARE.
 #define _KMEMUSER
 #endif
 #endif
-
 #include <algorithm>
 #include <fstream>
 #include <sstream>
-
 #include <cstdlib>
 #include <cstddef>
 #include <cstring>
@@ -43,7 +41,6 @@ SOFTWARE.
 #include <cstdio>
 #include <cerrno>
 #include <ctime>
-
 #if (!defined(_WIN32) && !defined(_WIN64))
 #include <signal.h>
 #include <unistd.h>
@@ -51,7 +48,6 @@ SOFTWARE.
 #include <sys/wait.h>
 #include <fcntl.h>
 #endif
-
 #if (defined(_WIN32) || defined(_WIN64))
 #include <windef.h>
 #include <shlwapi.h>
