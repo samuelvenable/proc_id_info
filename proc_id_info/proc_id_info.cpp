@@ -474,9 +474,72 @@ namespace {
     return (child_sec >= parent_sec && child_nsec > parent_nsec);
     #elif (defined(__linux__) || defined(__ANDROID__))
     time_t child_sec = 0, parent_sec = 0;
-    long child_nsec = 0, parent_nsec = 0;
-    return true; // TODO: Add proper platform-specific implementation...
-    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    long long child_msec = 0, parent_msec = 0;
+    auto system_get_boot_time = []() {
+      long long retval = 0;
+      std::ifstream file("/proc/stat");
+      std::string line;
+      while (std::getline(file, line)) {
+        if (line.rfind("btime", 0) == 0) {
+          std::string label;
+          long long btime;
+          std::istringstream iss(line);
+          iss >> label >> btime;
+          retval = btime;
+          break;
+        }
+      }
+      return retval;
+    };
+    auto proc_id_get_clock_ticks = [](proc_id_info::proc_id_t proc_id) {
+      long long retval = 0;
+      std::string procfs_path;
+      if (proc_id == proc_id_info::proc_id_from_self()) {
+        procfs_path = "/proc/self/stat";
+      } else {
+        procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/stat");
+      }
+      std::ifstream file(procfs_path);
+      if (!file.is_open()) {
+        return retval;
+      }
+      std::string content;
+      std::getline(file, content);
+      std::size_t last_closing_parentheses = content.rfind(')');
+      if (last_closing_parentheses == std::string::npos || last_closing_parentheses + 2 >= content.length()) {
+        return retval; 
+      }
+      std::string remaining = content.substr(last_closing_parentheses + 2);
+      std::istringstream iss(remaining);
+      std::string token;
+      std::vector<std::string> fields;
+      while (iss >> token) {
+        fields.push_back(token);
+      }
+      if (fields.size() >= 20) {
+        retval = std::strtoll(fields[19], nullptr, 10);
+      }
+      return retval;
+    };
+    long clock_ticks_per_sec = sysconf(_SC_CLK_TCK);
+    long long btime_secs = system_get_boot_time();
+    long long child_clock_ticks = proc_id_get_clock_ticks(proc_id);
+    if (btime_secs == 0 || child_clock_ticks == 0 || clock_ticks_per_sec <= 0) {
+      return false;
+    }
+    long long child_total_msec_from_boot = (child_clock_ticks * 1000) / clock_ticks_per_sec;
+    long long child_epoch_msec = (btime_secs * 1000) + child_total_msec_from_boot;
+    time_t child_sec = child_epoch_msec / 1000;
+    long long child_msec = child_epoch_msec % 1000;
+    long long parent_clock_ticks = proc_id_get_clock_ticks(parent_proc_id);
+    if (btime_secs == 0 || parent_clock_ticks == 0 || clock_ticks_per_sec <= 0) {
+      return false;
+    }
+    long long parent_total_msec_from_boot = (parent_clock_ticks * 1000) / clock_ticks_per_sec;
+    long long parent_epoch_msec = (btime_secs * 1000) + parent_total_msec_from_boot;
+    time_t parent_sec = parent_epoch_msec / 1000;
+    long long parent_msec = parent_epoch_msec % 1000;
+    return (child_sec >= parent_sec && child_msec > parent_msec);
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     time_t child_sec = 0, parent_sec = 0;
     long child_nsec = 0, parent_nsec = 0;
