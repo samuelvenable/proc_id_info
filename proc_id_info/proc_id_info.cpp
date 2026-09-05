@@ -898,6 +898,12 @@ namespace proc_id_info {
       } while (Process32Next(hp, &pe));
     }
     CloseHandle(hp);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     proc_bsdinfo proc_info;
     // The proc_pidinfo(...) API does not include kernel threads...
@@ -932,6 +938,12 @@ namespace proc_id_info {
         fclose(file);
       }
     }
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -949,6 +961,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -966,6 +984,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -978,6 +1002,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -990,8 +1020,13 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
-    #endif
-    #if (defined(__sun) && defined(__SVR4))
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
+    #elif (defined(__sun) && defined(__SVR4))
     // Checks if the PR_ISSYS flag is not present on Solaris / illumos...
     // If this flag is not set then the process is not a kernel thread...
     if (!proc_id_is_kernel_thread(proc_id)) {
@@ -1025,6 +1060,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
@@ -1068,6 +1109,12 @@ namespace proc_id_info {
       } while (Process32Next(hp, &pe));
     }
     CloseHandle(hp);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::vector<proc_id_t> proc_info;
     proc_info.resize(proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, nullptr, 0));
@@ -1099,6 +1146,12 @@ namespace proc_id_info {
       }
     }
     closedir(proc);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1122,6 +1175,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__DragonFly__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1143,6 +1202,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__NetBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1159,6 +1224,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__OpenBSD__)
     int cntp = 0;
     kvm_t *kd = nullptr;
@@ -1177,6 +1248,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #endif
     #if (defined(__sun) && defined(__SVR4))
     struct pid cur_pid;
@@ -1199,6 +1276,12 @@ namespace proc_id_info {
       }
     }
     kvm_close(kd);
+    struct is_invalid {
+      bool operator()(proc_id_t proc_id) {
+        return (proc_id_is_kernel_thread(proc_id));
+      }
+    };
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     finish:
     #endif
     #if (defined(_WIN32) || defined(_WIN64))
