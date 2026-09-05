@@ -35,6 +35,7 @@ SOFTWARE.
 #include <cstring>
 #include <climits>
 #include <cstdio>
+#include <ctime>
 
 #if (!defined(_WIN32) && !defined(_WIN64))
 #include <signal.h>
@@ -444,8 +445,8 @@ namespace {
   }
   #endif
 
-  #if (defined(_WIN32) || defined(_WIN64))
   bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
+    #if (defined(_WIN32) || defined(_WIN64))
     HANDLE proc_handle = nullptr, parent_proc_handle = nullptr;
     if ((proc_handle = open_process_with_debug_privilege(proc_id))) {
       if ((parent_proc_handle = open_process_with_debug_privilege(parent_proc_id))) {
@@ -457,37 +458,157 @@ namespace {
         }
       }
     }
+    #elif (defined(__APPLE__) && defined(__MACH__))
+    time_t child_sec = 0, parent_sec = 0;
+    long child_nsec = 0, parent_nsec = 0;
+    return true; // TODO: Add proper platform-specific implementation...
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #elif (defined(__linux__) || defined(__ANDROID__))
+    time_t child_sec = 0, parent_sec = 0;
+    long child_nsec = 0, parent_nsec = 0;
+    return true; // TODO: Add proper platform-specific implementation...
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
+    time_t child_sec = 0, parent_sec = 0;
+    long child_nsec = 0, parent_nsec = 0;
+    int cntp = 0;
+    kvm_t *kd = nullptr;
+    kinfo_proc *proc_info = nullptr;
+    const char *nlistf = "/dev/null";
+    const char *memf   = "/dev/null";
+    kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
+      child_sec = proc_info->ki_start.tv_sec;
+      child_nsec = proc_info->ki_start.tv_nsec;
+    }
+    kvm_close(kd);
+    kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, parent_proc_id, &cntp))) {
+      parent_sec = proc_info->ki_start.tv_sec;
+      parent_nsec = proc_info->ki_start.tv_nsec;
+    }
+    kvm_close(kd);
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #elif defined(__DragonFly__)
+    time_t child_sec = 0, parent_sec = 0;
+    long child_nsec = 0, parent_nsec = 0;
+    int cntp = 0;
+    kvm_t *kd = nullptr;
+    kinfo_proc *proc_info = nullptr;
+    const char *nlistf = "/dev/null";
+    const char *memf   = "/dev/null";
+    kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, &cntp))) {
+      child_sec = proc_info->kp_start.tv_sec;
+      child_nsec = proc_info->kp_start.tv_nsec;
+    }
+    kvm_close(kd);
+    kd = kvm_openfiles(nlistf, memf, nullptr, O_RDONLY, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, parent_proc_id, &cntp))) {
+      parent_sec = proc_info->kp_start.tv_sec;
+      parent_nsec = proc_info->kp_start.tv_nsec;
+    }
+    kvm_close(kd);
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #elif defined(__NetBSD__)
+    std::uint32_t child_sec = 0, parent_sec = 0;
+    std::uint32_t child_usec = 0, parent_usec = 0;
+    int cntp = 0;
+    kvm_t *kd = nullptr;
+    kinfo_proc2 *proc_info = nullptr;
+    kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getproc2(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc2), &cntp))) {
+      child_sec = proc_info->p_rtime_sec;
+      child_usec = proc_info->p_rtime_usec;
+    }
+    kvm_close(kd);
+    kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getproc2(kd, KERN_PROC_PID, parent_proc_id, sizeof(struct kinfo_proc2), &cntp))) {
+      parent_sec = proc_info->p_rtime_sec;
+      parent_usec = proc_info->p_rtime_usec;
+    }
+    kvm_close(kd);
+    return (child_sec >= parent_sec && child_usec > parent_usec);
+    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
+    #elif defined(__OpenBSD__)
+    std::uint32_t child_sec = 0, parent_sec = 0;
+    std::uint32_t child_usec = 0, parent_usec = 0;
+    int cntp = 0;
+    kvm_t *kd = nullptr;
+    kinfo_proc *proc_info = nullptr;
+    kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
+      child_sec = proc_info->p_rtime_sec;
+      child_usec = proc_info->p_rtime_usec;
+    }
+    kvm_close(kd);
+    kd = kvm_openfiles(nullptr, nullptr, nullptr, KVM_NO_FILES, nullptr);
+    if (!kd) return false;
+    if ((proc_info = kvm_getprocs(kd, KERN_PROC_PID, proc_id, sizeof(struct kinfo_proc), &cntp))) {
+      parent_sec = proc_info->p_rtime_sec;
+      parent_usec = proc_info->p_rtime_usec;
+    }
+    kvm_close(kd);
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #elif (defined(__sun) && defined(__SVR4))
+    time_t child_sec = 0, parent_sec = 0;
+    long child_nsec = 0, parent_nsec = 0;
+    if (!proc_id_is_kernel_thread(proc_id)) {
+      auto proc_psinfo_get = [](psinfo_t *psinfo, proc_id_info::proc_id_t proc_id) {
+        int fd = -1, retval = -1;
+        std::string procfs_path;
+        if (proc_id == proc_id_info::proc_id_from_self()) {
+          procfs_path = "/proc/self/psinfo";
+        } else {
+          procfs_path = std::string("/proc/") + std::to_string(proc_id) + std::string("/psinfo");
+        }
+        if ((fd = open(procfs_path.c_str(), O_RDONLY)) != -1) {
+          if (read(fd, psinfo, sizeof(*psinfo)) == sizeof(*psinfo)) {
+            retval = 0;
+          }
+          close(fd);
+        }
+        return retval;
+      };
+      psinfo_t psinfo;
+      if (!proc_psinfo_get(&psinfo, proc_id)) {
+        child_sec = psinfo.pr_start.tv_sec;
+        child_nsec = psinfo.pr_start.tv_nsec;
+      }
+      if (!proc_psinfo_get(&psinfo, parent_proc_id)) {
+        parent_sec = psinfo.pr_start.tv_sec;
+        parent_nsec = psinfo.pr_start.tv_nsec;
+      }
+    }
+    if (child_sec == 0 && parent_sec == 0 && child_nsec == 0 && parent_nsec == 0) {
+      kvm_t *kd = nullptr;
+      struct proc *proc_info = nullptr;
+      kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
+      if (!kd) false;
+      if ((proc_info = kvm_getproc(kd, proc_id))) {
+        child_sec = proc_info->p_user.u_start.tv_sec;
+        child_nsec = proc_info->p_user.u_start.tv_nsec;
+      }
+      kvm_close(kd);
+      kd = kvm_open(nullptr, nullptr, nullptr, O_RDONLY, nullptr);
+      if (!kd) false;
+      if ((proc_info = kvm_getproc(kd, parent_proc_id))) {
+        parent_sec = proc_info->p_user.u_start.tv_sec;
+        parent_nsec = proc_info->p_user.u_start.tv_nsec;
+      }
+      kvm_close(kd);
+    }
+    return (child_sec >= parent_sec && child_nsec > parent_nsec);
+    #endif
     return false;
   }
-  #elif (defined(__APPLE__) && defined(__MACH__))
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif (defined(__linux__) || defined(__ANDROID__))
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__))
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif defined(__DragonFly__)
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif defined(__NetBSD__)
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif defined(__OpenBSD__)
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #elif (defined(__sun) && defined(__SVR4))
-  bool proc_id_and_parent_proc_id_compare_creation_time(proc_id_info::proc_id_t proc_id, proc_id_info::proc_id_t parent_proc_id) {
-    return true; // TODO: Add proper platform-specific implementation...
-  }
-  #endif
 
   #if (defined(_WIN32) || defined(_WIN64))
   bool proc_id_is_kernel_thread(proc_id_info::proc_id_t proc_id) {
@@ -1084,8 +1205,8 @@ namespace proc_id_info {
     vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::vector<proc_id_t> proc_info;
-    proc_info.resize(proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, nullptr, 0));
-    int cntp = proc_listpids(PROC_PPID_ONLY, (uint32_t)parent_proc_id, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
+    proc_info.resize(proc_listpids(PROC_PPID_ONLY, (std::uint32_t)parent_proc_id, nullptr, 0));
+    int cntp = proc_listpids(PROC_PPID_ONLY, (std::uint32_t)parent_proc_id, &proc_info[0], sizeof(proc_id_t) * proc_info.size());
     for (int i = cntp - 1; i >= 0; i--) {
       if (proc_info[i] > 0) {
         if (proc_id_and_parent_proc_id_compare_creation_time(proc_info[i], parent_proc_id)) {
