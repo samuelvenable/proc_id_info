@@ -600,7 +600,7 @@ namespace {
     }
     #elif (defined(__APPLE__) && defined(__MACH__))
     std::uint64_t child_sec = 0, parent_sec = 0;
-    std::uint64_t child_nsec = 0, parent_nsec = 0;
+    std::uint64_t child_usec = 0, parent_usec = 0;
     proc_bsdinfo proc_info;
     if (proc_pidinfo(proc_id, PROC_PIDTBSDINFO, 0, &proc_info, sizeof(proc_info)) > 0) {
       child_sec = proc_info.pbi_start_tvsec;
@@ -746,7 +746,6 @@ namespace {
     }
     kvm_close(kd);
     return (child_sec >= parent_sec && child_usec > parent_usec);
-    vec.erase(std::remove_if(vec.begin(), vec.end(), is_invalid()), vec.end());
     #elif defined(__OpenBSD__)
     std::uint32_t child_sec = 0, parent_sec = 0;
     std::uint32_t child_usec = 0, parent_usec = 0;
